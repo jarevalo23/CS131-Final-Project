@@ -1,0 +1,46 @@
+{
+  "video": "data/sample1.mp4",
+  "frame_number": 0,
+  "labels": [
+    "1 near-left corner",
+    "2 near-right corner",
+    "3 far-right corner",
+    "4 far-left corner"
+  ],
+  "frame_points": [
+    [
+      143,
+      707
+    ],
+    [
+      1275,
+      547
+    ],
+    [
+      885,
+      234
+    ],
+    [
+      5,
+      308
+    ]
+  ],
+  "court_points_ft": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      47.0,
+      0.0
+    ],
+    [
+      47.0,
+      50.0
+    ],
+    [
+      0.0,
+      50.0
+    ]
+  ]
+}

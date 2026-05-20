@@ -1,0 +1,17 @@
+path: /Users/CWeisberg23/Documents/Codex/2026-05-19/files-mentioned-by-the-user-cs131/Basketball Players.v1i.yolov11
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 9
+names:
+  - Ball
+  - Hoop
+  - Period
+  - Player
+  - Ref
+  - Shot Clock
+  - Team Name
+  - Team Points
+  - Time Remaining
+
