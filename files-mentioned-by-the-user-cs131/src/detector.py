@@ -9,6 +9,7 @@ import numpy as np
 class TrackedDetections:
     boxes: np.ndarray
     track_ids: np.ndarray
+    confidences: np.ndarray
 
 
 @dataclass
@@ -96,6 +97,7 @@ class PlayerDetector:
             return self._fallback_tracker.update(boxes)
         boxes = []
         track_ids = []
+        confidences = []
         for box in result.boxes:
             class_id = int(box.cls[0])
             if not self._is_player_class(class_id):
@@ -105,9 +107,11 @@ class PlayerDetector:
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
             boxes.append([x1, y1, x2, y2])
             track_ids.append(int(box.id[0]))
+            confidences.append(float(box.conf[0]))
         return TrackedDetections(
             boxes=np.array(boxes, dtype=np.float32).reshape(-1, 4),
             track_ids=np.array(track_ids, dtype=np.int32),
+            confidences=np.array(confidences, dtype=np.float32),
         )
 
     def _is_player_class(self, class_id: int) -> bool:
@@ -130,7 +134,11 @@ class SimpleIoUTracker:
     def update(self, boxes: np.ndarray) -> TrackedDetections:
         if len(boxes) == 0:
             self._age_unmatched(set(self.tracks))
-            return TrackedDetections(boxes=boxes, track_ids=np.empty((0,), dtype=np.int32))
+            return TrackedDetections(
+                boxes=boxes,
+                track_ids=np.empty((0,), dtype=np.int32),
+                confidences=np.empty((0,), dtype=np.float32),
+            )
 
         unmatched_tracks = set(self.tracks)
         assigned_ids: list[int] = []
@@ -159,6 +167,7 @@ class SimpleIoUTracker:
         return TrackedDetections(
             boxes=np.array(assigned_boxes, dtype=np.float32).reshape(-1, 4),
             track_ids=np.array(assigned_ids, dtype=np.int32),
+            confidences=np.ones(len(assigned_ids), dtype=np.float32),
         )
 
     def _age_unmatched(self, unmatched_tracks: set[int]) -> None:

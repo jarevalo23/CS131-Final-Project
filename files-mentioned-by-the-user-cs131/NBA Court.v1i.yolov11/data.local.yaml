@@ -1,0 +1,19 @@
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 13
+names:
+  - Left Bottom Left Paint
+  - Left Bottom Right Paint
+  - Left Corner
+  - Left Tick
+  - Left Top Left Paint
+  - Left Top Right Paint
+  - Middle
+  - Right Bottom Left Paint
+  - Right Bottom Right Paint
+  - Right Corner
+  - Right Tick
+  - Right Top Left Paint
+  - Right Top Right Paint

@@ -1,0 +1,15 @@
+mean_error_px=412.05
+max_error_px=1318.43
+
+1: error_px=1127.25, frame_point=(826, 201), court_ft=[0.0, 50.0]
+2: error_px=1318.43, frame_point=(494, 720), court_ft=[47.0, 50.0]
+3: error_px=471.56, frame_point=(993, 441), court_ft=[47.0, 0.0]
+4: error_px=786.25, frame_point=(581, 426), court_ft=[0.0, 0.0]
+5: error_px=321.71, frame_point=(645, 257), court_ft=[47.0, 33.0]
+6: error_px=0.00, frame_point=(852, 266), court_ft=[47.0, 17.0]
+7: error_px=0.00, frame_point=(686, 549), court_ft=[28.0, 33.0]
+8: error_px=178.46, frame_point=(498, 459), court_ft=[28.0, 17.0]
+9: error_px=0.00, frame_point=(571, 471), court_ft=[28.0, 25.0]
+10: error_px=0.00, frame_point=(160, 378), court_ft=[18.0, 25.0]
+11: error_px=385.25, frame_point=(656, 520), court_ft=[32.8022346496582, 47.0]
+12: error_px=355.65, frame_point=(539, 336), court_ft=[32.8022346496582, 3.0]

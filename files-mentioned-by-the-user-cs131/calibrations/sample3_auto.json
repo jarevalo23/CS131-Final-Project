@@ -1,0 +1,121 @@
+{
+  "video": "data/sample3.mp4",
+  "frame_number": 0,
+  "hoop_side": "right",
+  "labels": [
+    "midcourt near sideline",
+    "baseline near corner",
+    "baseline far corner",
+    "midcourt far sideline",
+    "near lane baseline corner",
+    "far lane baseline corner",
+    "near elbow / FT line lane",
+    "far elbow / FT line lane",
+    "FT line center",
+    "top of 3PT arc",
+    "near 3PT corner/arc break",
+    "far 3PT corner/arc break"
+  ],
+  "frame_points": [
+    [
+      826,
+      201
+    ],
+    [
+      494,
+      720
+    ],
+    [
+      993,
+      441
+    ],
+    [
+      581,
+      426
+    ],
+    [
+      645,
+      257
+    ],
+    [
+      852,
+      266
+    ],
+    [
+      686,
+      549
+    ],
+    [
+      498,
+      459
+    ],
+    [
+      571,
+      471
+    ],
+    [
+      160,
+      378
+    ],
+    [
+      656,
+      520
+    ],
+    [
+      539,
+      336
+    ]
+  ],
+  "court_points_ft": [
+    [
+      0.0,
+      50.0
+    ],
+    [
+      47.0,
+      50.0
+    ],
+    [
+      47.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0
+    ],
+    [
+      47.0,
+      33.0
+    ],
+    [
+      47.0,
+      17.0
+    ],
+    [
+      28.0,
+      33.0
+    ],
+    [
+      28.0,
+      17.0
+    ],
+    [
+      28.0,
+      25.0
+    ],
+    [
+      18.0,
+      25.0
+    ],
+    [
+      32.80223491591336,
+      47.0
+    ],
+    [
+      32.80223491591336,
+      3.0
+    ]
+  ],
+  "source": "auto_calibrate",
+  "model": "runs/pose/runs/court_landmarks_pose/weights/best.pt"
+}

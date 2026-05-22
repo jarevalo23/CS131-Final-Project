@@ -100,12 +100,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hoop-class-ids")
     parser.add_argument("--ball-class-ids")
     parser.add_argument("--detect-ball", action="store_true")
+    parser.add_argument("--ball-confidence", type=float)
     parser.add_argument("--auto-orient-hoop", action="store_true")
     parser.add_argument("--compression-factor", type=float, default=1.0)
     parser.add_argument("--player-smoothing-alpha", type=float, default=1.0)
     parser.add_argument("--ball-smoothing-alpha", type=float, default=1.0)
     parser.add_argument("--ball-max-jump", type=float)
     parser.add_argument("--ball-max-missing", type=int, default=0)
+    parser.add_argument("--ball-court-margin", type=int, default=180)
+    parser.add_argument("--ball-trail-length", type=int, default=18)
+    parser.add_argument("--topdown-padding", type=int, default=120)
+    parser.add_argument("--ball-radius", type=int, default=10)
+    parser.add_argument("--dynamic-homography", action="store_true")
+    parser.add_argument("--classify-teams", action="store_true")
+    parser.add_argument("--team-min-margin", type=float, default=4.0)
+    parser.add_argument("--team-lock-min-votes", type=int, default=8)
+    parser.add_argument("--team-lock-majority-ratio", type=float, default=0.75)
+    parser.add_argument("--show-unlocked-team-votes", action="store_true")
+    parser.add_argument("--min-player-box-height", type=float, default=35.0)
+    parser.add_argument("--duplicate-iou-threshold", type=float, default=0.65)
+    parser.add_argument("--max-players", type=int)
     parser.add_argument("--csv-output", type=Path, default=Path("outputs/tracks.csv"))
     return parser.parse_args()
 
@@ -134,10 +148,24 @@ if __name__ == "__main__":
             hoop_class_ids=parse_id_list(args.hoop_class_ids),
             ball_class_ids=parse_id_list(args.ball_class_ids),
             detect_ball_enabled=args.detect_ball,
+            ball_confidence=args.ball_confidence,
             player_smoothing_alpha=args.player_smoothing_alpha,
             ball_smoothing_alpha=args.ball_smoothing_alpha,
             ball_max_jump=args.ball_max_jump,
             ball_max_missing=args.ball_max_missing,
+            ball_court_margin=args.ball_court_margin,
+            ball_trail_length=args.ball_trail_length,
+            topdown_padding=args.topdown_padding,
+            ball_radius=args.ball_radius,
+            dynamic_homography=args.dynamic_homography,
+            classify_teams=args.classify_teams,
+            team_min_margin=args.team_min_margin,
+            team_lock_min_votes=args.team_lock_min_votes,
+            team_lock_majority_ratio=args.team_lock_majority_ratio,
+            show_unlocked_team_votes=args.show_unlocked_team_votes,
+            min_player_box_height=args.min_player_box_height,
+            duplicate_iou_threshold=args.duplicate_iou_threshold,
+            max_players=args.max_players,
         )
     else:
         run(

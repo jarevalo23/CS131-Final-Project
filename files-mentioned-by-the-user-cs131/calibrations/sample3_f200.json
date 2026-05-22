@@ -1,0 +1,92 @@
+{
+  "video": "data/sample3.mp4",
+  "frame_number": 200,
+  "hoop_side": "right",
+  "labels": [
+    "baseline far corner",
+    "near lane baseline corner",
+    "far lane baseline corner",
+    "near elbow / FT line lane",
+    "far elbow / FT line lane",
+    "FT line center",
+    "top of 3PT arc",
+    "near 3PT corner/arc break",
+    "far 3PT corner/arc break"
+  ],
+  "frame_points": [
+    [
+      819,
+      276
+    ],
+    [
+      1087,
+      437
+    ],
+    [
+      941,
+      351
+    ],
+    [
+      662,
+      472
+    ],
+    [
+      577,
+      378
+    ],
+    [
+      610,
+      423
+    ],
+    [
+      379,
+      443
+    ],
+    [
+      864,
+      574
+    ],
+    [
+      590,
+      307
+    ]
+  ],
+  "court_points_ft": [
+    [
+      47.0,
+      0.0
+    ],
+    [
+      47.0,
+      33.0
+    ],
+    [
+      47.0,
+      17.0
+    ],
+    [
+      28.0,
+      33.0
+    ],
+    [
+      28.0,
+      17.0
+    ],
+    [
+      28.0,
+      25.0
+    ],
+    [
+      18.0,
+      25.0
+    ],
+    [
+      32.8022346496582,
+      47.0
+    ],
+    [
+      32.8022346496582,
+      3.0
+    ]
+  ]
+}

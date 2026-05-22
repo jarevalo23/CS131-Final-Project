@@ -1,0 +1,35 @@
+path: /Users/CWeisberg23/Documents/Codex/2026-05-19/files-mentioned-by-the-user-cs131/court_landmark_dataset
+train: images/train
+val: images/train
+
+names:
+  0: court
+kpt_shape: [12, 3]
+
+landmark_names:
+  0: midcourt near sideline
+  1: baseline near corner
+  2: baseline far corner
+  3: midcourt far sideline
+  4: near lane baseline corner
+  5: far lane baseline corner
+  6: near elbow / FT line lane
+  7: far elbow / FT line lane
+  8: FT line center
+  9: top of 3PT arc
+  10: near 3PT corner/arc break
+  11: far 3PT corner/arc break
+
+court_points_ft:
+  0: [0.0, 50.0]
+  1: [47.0, 50.0]
+  2: [47.0, 0.0]
+  3: [0.0, 0.0]
+  4: [47.0, 33.0]
+  5: [47.0, 17.0]
+  6: [28.0, 33.0]
+  7: [28.0, 17.0]
+  8: [28.0, 25.0]
+  9: [18.0, 25.0]
+  10: [32.80223491591336, 47.0]
+  11: [32.80223491591336, 3.0]
