@@ -31,6 +31,12 @@ RIGHT_HOOP_CLASS_TO_LANDMARK = {
     "court corner top left": ("midcourt far sideline", (0.0, 0.0)),
 }
 
+RIGHT_HOOP_PAINT_CLASS_TO_LANDMARK = {
+    key: value
+    for key, value in RIGHT_HOOP_CLASS_TO_LANDMARK.items()
+    if key.startswith("right ") and "paint" in key
+}
+
 
 def normalize_name(name: str) -> str:
     return name.strip().lower().replace("_", " ").replace("-", " ")
@@ -81,21 +87,46 @@ def choose_frame_with_landmarks(
     frame_number: int,
     scan_frames: int,
     scan_step: int,
+    min_point_distance: float,
 ) -> tuple[int, np.ndarray, list[tuple[str, tuple[int, int], float]]]:
     best: tuple[int, int, np.ndarray, list[tuple[str, tuple[int, int], float]]] | None = None
     for offset in range(0, max(scan_frames, 1), max(scan_step, 1)):
         current_frame_number = frame_number + offset
         frame = read_frame(video_path, current_frame_number)
         detections = detect_landmark_boxes(model_path, frame, confidence, print_classes=False)
-        mapped_classes = {class_name for class_name, _center, _score in detections if class_name in mapping}
-        score = len(mapped_classes)
+        mapped_points = best_mapped_points(detections, mapping)
+        score = len(mapped_points)
         if best is None or score > best[1]:
             best = (current_frame_number, score, frame, detections)
-        if score >= 4:
+        if score >= 4 and points_are_spatially_distinct(mapped_points, min_point_distance):
             return current_frame_number, frame, detections
 
     assert best is not None
     return best[0], best[2], best[3]
+
+
+def best_mapped_points(
+    detections: list[tuple[str, tuple[int, int], float]],
+    mapping: dict[str, tuple[str, tuple[float, float]]],
+) -> list[tuple[int, int]]:
+    best_by_class: dict[str, tuple[tuple[int, int], float]] = {}
+    for class_name, center, score in detections:
+        if class_name not in mapping:
+            continue
+        previous = best_by_class.get(class_name)
+        if previous is None or score > previous[1]:
+            best_by_class[class_name] = (center, score)
+    return [center for center, _score in best_by_class.values()]
+
+
+def points_are_spatially_distinct(points: list[tuple[int, int]], min_distance: float) -> bool:
+    if len(points) < 4:
+        return False
+    for index, point in enumerate(points):
+        for other in points[index + 1 :]:
+            if np.linalg.norm(np.array(point, dtype=np.float32) - np.array(other, dtype=np.float32)) < min_distance:
+                return False
+    return True
 
 
 def auto_calibrate_boxes(
@@ -108,8 +139,11 @@ def auto_calibrate_boxes(
     print_classes: bool,
     scan_frames: int,
     scan_step: int,
+    paint_only: bool,
+    min_point_distance: float,
 ) -> None:
-    mapping = RIGHT_HOOP_CLASS_TO_LANDMARK if hoop_side == "right" else mirror_for_left_hoop(RIGHT_HOOP_CLASS_TO_LANDMARK)
+    right_mapping = RIGHT_HOOP_PAINT_CLASS_TO_LANDMARK if paint_only else RIGHT_HOOP_CLASS_TO_LANDMARK
+    mapping = right_mapping if hoop_side == "right" else mirror_for_left_hoop(right_mapping)
     frame_number, frame, detections = choose_frame_with_landmarks(
         video_path=video_path,
         model_path=model_path,
@@ -118,6 +152,7 @@ def auto_calibrate_boxes(
         frame_number=frame_number,
         scan_frames=scan_frames,
         scan_step=scan_step,
+        min_point_distance=min_point_distance,
     )
     if print_classes:
         detect_landmark_boxes(model_path, frame, confidence, print_classes=True)
@@ -139,10 +174,10 @@ def auto_calibrate_boxes(
         frame_points.append(center)
         court_points_ft.append(court_point)
 
-    if len(frame_points) < 4:
+    if len(frame_points) < 4 or not points_are_spatially_distinct(frame_points, min_point_distance):
         detected_names = sorted({name for name, _center, _score in detections})
         raise ValueError(
-            f"Need at least 4 mapped court landmarks; found {len(frame_points)}. "
+            f"Need at least 4 distinct mapped court landmarks; found {len(frame_points)}. "
             f"Detected classes: {detected_names}"
         )
 
@@ -173,6 +208,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--print-classes", action="store_true")
     parser.add_argument("--scan-frames", type=int, default=1)
     parser.add_argument("--scan-step", type=int, default=5)
+    parser.add_argument("--paint-only", action="store_true")
+    parser.add_argument("--min-point-distance", type=float, default=35.0)
     return parser.parse_args()
 
 
@@ -188,4 +225,6 @@ if __name__ == "__main__":
         print_classes=args.print_classes,
         scan_frames=args.scan_frames,
         scan_step=args.scan_step,
+        paint_only=args.paint_only,
+        min_point_distance=args.min_point_distance,
     )

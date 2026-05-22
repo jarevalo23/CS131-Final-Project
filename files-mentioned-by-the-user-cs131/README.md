@@ -23,6 +23,33 @@ Put clips in `data/`, then run:
 python -m src.main --video data/clip.mp4 --output outputs/annotated.mp4
 ```
 
+## One-Command Auto Pipeline
+
+After training/downloading the player and court models, run one command to auto-calibrate a clip and render the player/team/ball visualization:
+
+```bash
+python -m src.run_video --video data/sample3.mp4
+```
+
+This writes:
+
+- `calibrations/sample3_auto_pipeline.json`
+- `calibrations/sample3_auto_pipeline_review.jpg`
+- `outputs/sample3_auto_pipeline.mp4`
+- `outputs/sample3_auto_pipeline.csv`
+
+For a quick test, limit frames:
+
+```bash
+python -m src.run_video --video data/sample3.mp4 --max-frames 120
+```
+
+If auto-calibration is wrong for a clip, pass an existing manual calibration:
+
+```bash
+python -m src.run_video --video data/sample2.mp4 --calibration calibrations/sample2.json
+```
+
 ## Calibrate Court Landmarks
 
 Before running the full pipeline, click landmarks on one frame:

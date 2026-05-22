@@ -1,0 +1,7 @@
+mean_error_px=0.00
+max_error_px=0.00
+
+1: error_px=0.00, frame_point=(580, 352), court_ft=[28.0, 17.0]
+2: error_px=0.00, frame_point=(686, 460), court_ft=[28.0, 33.0]
+3: error_px=0.00, frame_point=(947, 311), court_ft=[47.0, 17.0]
+4: error_px=0.00, frame_point=(948, 312), court_ft=[47.0, 33.0]

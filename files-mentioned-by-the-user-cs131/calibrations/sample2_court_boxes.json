@@ -1,0 +1,49 @@
+{
+  "video": "data/sample2.mp4",
+  "frame_number": 0,
+  "hoop_side": "right",
+  "labels": [
+    "far elbow / FT line lane",
+    "near elbow / FT line lane",
+    "far lane baseline corner",
+    "near lane baseline corner"
+  ],
+  "frame_points": [
+    [
+      580,
+      352
+    ],
+    [
+      686,
+      460
+    ],
+    [
+      947,
+      311
+    ],
+    [
+      948,
+      312
+    ]
+  ],
+  "court_points_ft": [
+    [
+      28.0,
+      17.0
+    ],
+    [
+      28.0,
+      33.0
+    ],
+    [
+      47.0,
+      17.0
+    ],
+    [
+      47.0,
+      33.0
+    ]
+  ],
+  "source": "auto_calibrate_boxes",
+  "model": "runs/detect/runs/court/nba_court_yolov8n/weights/best.pt"
+}
