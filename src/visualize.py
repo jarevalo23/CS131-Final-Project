@@ -157,6 +157,105 @@ def draw_top_down(
     return court
 
 
+def build_point_by_id(
+    points: np.ndarray,
+    track_ids: np.ndarray | None,
+    padding: int = 0,
+) -> dict[int, tuple[int, int]]:
+    """Map track_id -> padded court pixel for overlay drawing (matches draw_top_down)."""
+    mapping: dict[int, tuple[int, int]] = {}
+    if track_ids is None or len(points) == 0:
+        return mapping
+    for point, track_id in zip(points, track_ids):
+        x, y = (point + padding).astype(int)
+        mapping[int(track_id)] = (int(x), int(y))
+    return mapping
+
+
+def draw_top_down_with_overlays(
+    projected_points: np.ndarray,
+    court_size: tuple[int, int] = DEFAULT_COURT_SIZE,
+    hoop_side: str = "left",
+    track_ids: np.ndarray | None = None,
+    team_ids: np.ndarray | None = None,
+    ball_points: np.ndarray | None = None,
+    ball_trail: list[np.ndarray] | None = None,
+    padding: int = 0,
+    ball_radius: int = 10,
+    *,
+    offense_team: int = 0,
+    nearest_pairs: list[tuple[int, int, float | None]] | None = None,
+    double_teamed: set[int] | None = None,
+    overlay_point_by_id: dict[int, tuple[int, int]] | None = None,
+) -> np.ndarray:
+    """``draw_top_down()`` plus optional metric overlays.
+
+    Renders the standard top-down view (unchanged) and then adds, using
+    pre-computed per-frame metrics:
+      * the offensive convex hull (team color, ~25% opacity fill + outline)
+      * a line from each offensive player to their nearest defender, colored
+        red (<3 ft), yellow (3-6 ft), or green (>6 ft)
+      * a red ring around each double-teamed offensive player
+
+    Players are located by ``track_id``; ``nearest_pairs`` is a list of
+    ``(offensive_track_id, defender_track_id, distance_ft)`` (defender_track_id
+    < 0 / distance None means no defender) and ``double_teamed`` is a set of
+    offensive track ids. ``draw_top_down`` is wrapped, never modified.
+    """
+    court = draw_top_down(
+        projected_points,
+        court_size=court_size,
+        hoop_side=hoop_side,
+        track_ids=track_ids,
+        team_ids=team_ids,
+        ball_points=ball_points,
+        ball_trail=ball_trail,
+        padding=padding,
+        ball_radius=ball_radius,
+    )
+    nearest_pairs = nearest_pairs or []
+    double_teamed = double_teamed or set()
+    # Geometry source: caller-supplied (smoothed / persisted) positions if given,
+    # otherwise build from the live points. The base render above is unaffected.
+    if overlay_point_by_id is not None:
+        point_by_id = overlay_point_by_id
+    else:
+        point_by_id = build_point_by_id(projected_points, track_ids, padding)
+    if not point_by_id:
+        return court
+
+    offense_color = TEAM_COLORS.get(int(offense_team), TEAM_COLORS[-1])
+
+    # Offensive convex hull (over the same players the metrics used).
+    off_ids = [off for off, _defender, _dist in nearest_pairs]
+    hull_points = [point_by_id[t] for t in off_ids if t in point_by_id]
+    if len(hull_points) >= 3:
+        hull = cv2.convexHull(np.array(hull_points, dtype=np.int32))
+        fill = court.copy()
+        cv2.fillPoly(fill, [hull], offense_color)
+        cv2.addWeighted(fill, 0.25, court, 0.75, 0, court)
+        cv2.polylines(court, [hull], True, offense_color, 2, cv2.LINE_AA)
+
+    # Nearest-defender lines, color-coded by distance.
+    for off, defender, dist in nearest_pairs:
+        if dist is None or defender < 0 or off not in point_by_id or defender not in point_by_id:
+            continue
+        if dist < 3.0:
+            color = (0, 0, 255)
+        elif dist <= 6.0:
+            color = (0, 255, 255)
+        else:
+            color = (0, 200, 0)
+        cv2.line(court, point_by_id[off], point_by_id[defender], color, 2, cv2.LINE_AA)
+
+    # Double-team rings.
+    for track_id in double_teamed:
+        if int(track_id) in point_by_id:
+            cv2.circle(court, point_by_id[int(track_id)], 14, (0, 0, 255), 3, cv2.LINE_AA)
+
+    return court
+
+
 def combine_views(camera: np.ndarray, court: np.ndarray) -> np.ndarray:
     camera_h = camera.shape[0]
     court_scaled = cv2.resize(court, (int(court.shape[1] * camera_h / court.shape[0]), camera_h))

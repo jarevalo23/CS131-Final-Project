@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from collections import deque
+from collections import defaultdict, deque
 from pathlib import Path
 
 import cv2
@@ -13,7 +13,15 @@ from src.dynamic_homography import DynamicHomographyTracker
 from src.homography import estimate_homography, load_calibration, load_hoop_side, project_points
 from src.smoothing import PointSmoother, TrackSmoother
 from src.team_classifier import JerseyTeamClassifier
-from src.visualize import combine_views, draw_camera_view, draw_top_down, in_court_mask, orient_display_points
+from src.visualize import (
+    build_point_by_id,
+    combine_views,
+    draw_camera_view,
+    draw_top_down,
+    draw_top_down_with_overlays,
+    in_court_mask,
+    orient_display_points,
+)
 
 
 def compress_from_center_axis(
@@ -33,6 +41,49 @@ def parse_id_list(value: str | None) -> set[int] | None:
     if value is None or value.strip() == "":
         return None
     return {int(item.strip()) for item in value.split(",") if item.strip()}
+
+
+def sibling_csv(csv_path: Path, suffix: str) -> Path:
+    """Derive outputs/<clip>_<suffix>.csv from outputs/<clip>_tracks.csv."""
+    name = csv_path.name
+    base = name[: -len("_tracks.csv")] if name.endswith("_tracks.csv") else csv_path.stem
+    return csv_path.parent / f"{base}_{suffix}.csv"
+
+
+def load_overlay_metrics(
+    metrics_path: Path,
+    nearest_path: Path,
+) -> tuple[int, dict[int, set[int]], dict[int, list[tuple[int, int, float | None]]]]:
+    """Load per-frame overlay data produced by metrics.py.
+
+    Returns (offense_team, double_teamed_by_frame, nearest_pairs_by_frame).
+    Raises FileNotFoundError with a clear message if either file is missing.
+    """
+    missing = [str(path) for path in (metrics_path, nearest_path) if not path.exists()]
+    if missing:
+        raise FileNotFoundError("Run metrics.py first. Missing: " + ", ".join(missing))
+
+    offense_team = 0
+    double_by_frame: dict[int, set[int]] = {}
+    with metrics_path.open() as file:
+        for row in csv.DictReader(file):
+            offense_team = int(row["offense_team"])
+            frame = int(row["frame"])
+            ids = {int(value) for value in row["double_teamed_off_ids"].split(";") if value}
+            double_by_frame[frame] = ids
+
+    pairs_by_frame: dict[int, list[tuple[int, int, float | None]]] = defaultdict(list)
+    with nearest_path.open() as file:
+        for row in csv.DictReader(file):
+            frame = int(row["frame"])
+            off = int(row["off_track_id"])
+            defender_raw = row["nearest_def_track_id"]
+            dist_raw = row["nearest_def_dist_ft"]
+            defender = int(defender_raw) if defender_raw != "" else -1
+            dist = float(dist_raw) if dist_raw != "" else None
+            pairs_by_frame[frame].append((off, defender, dist))
+
+    return offense_team, double_by_frame, pairs_by_frame
 
 
 def write_rows(csv_path: Path, rows: list[dict[str, float | int]]) -> None:
@@ -59,6 +110,20 @@ def box_centers(boxes: np.ndarray) -> np.ndarray:
     x = (boxes[:, 0] + boxes[:, 2]) / 2
     y = (boxes[:, 1] + boxes[:, 3]) / 2
     return np.column_stack([x, y]).astype(np.float32)
+
+
+def point_in_any_box(point: np.ndarray, boxes: np.ndarray, pad: float = 20.0) -> bool:
+    """True if (x, y) lies inside any box (x1, y1, x2, y2) expanded by `pad` px."""
+    if len(boxes) == 0:
+        return False
+    px, py = float(point[0]), float(point[1])
+    inside = (
+        (boxes[:, 0] - pad <= px)
+        & (px <= boxes[:, 2] + pad)
+        & (boxes[:, 1] - pad <= py)
+        & (py <= boxes[:, 3] + pad)
+    )
+    return bool(inside.any())
 
 
 def filter_player_detections(
@@ -274,6 +339,12 @@ def run_spacing_steps_1_to_4(
     min_player_box_height: float = 35.0,
     duplicate_iou_threshold: float = 0.65,
     max_players: int | None = None,
+    overlay_metrics: bool = False,
+    overlay_smoothing: bool = True,
+    overlay_smoothing_alpha: float = 0.4,
+    overlay_persistence: bool = True,
+    overlay_min_offense: int = 4,
+    hide_ball_overlay: bool = False,
 ) -> None:
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
@@ -304,6 +375,20 @@ def run_spacing_steps_1_to_4(
         if classify_teams
         else None
     )
+
+    overlay_writer = None
+    overlay_output_path = output_path.with_name(f"{output_path.stem}_overlay{output_path.suffix}")
+    overlay_offense_team = 0
+    overlay_double_by_frame: dict[int, set[int]] = {}
+    overlay_pairs_by_frame: dict[int, list[tuple[int, int, float | None]]] = {}
+    overlay_smoother = TrackSmoother(overlay_smoothing_alpha) if (overlay_metrics and overlay_smoothing) else None
+    last_good_overlay: tuple[dict[int, tuple[int, int]], list, set] | None = None
+    persisted_frames = 0
+    if overlay_metrics:
+        overlay_offense_team, overlay_double_by_frame, overlay_pairs_by_frame = load_overlay_metrics(
+            sibling_csv(csv_path, "metrics"),
+            sibling_csv(csv_path, "nearest_defender"),
+        )
 
     writer = None
     rows: list[dict[str, float | int]] = []
@@ -429,9 +514,13 @@ def run_spacing_steps_1_to_4(
                     "frame_y": float(foot_point[1]),
                     "court_x": float(projected_point[0]),
                     "court_y": float(projected_point[1]),
+                    "ball_airborne": "",
                 }
             )
         for ball_point, ball_display_point in zip(ball_points, ball_display_points):
+            # "With a player" if the ball's image point falls inside any player
+            # box (padded); otherwise treat it as airborne (in flight / loose).
+            airborne = not point_in_any_box(ball_point, boxes, pad=20.0)
             rows.append(
                 {
                     "frame": frame_count,
@@ -442,6 +531,7 @@ def run_spacing_steps_1_to_4(
                     "frame_y": float(ball_point[1]),
                     "court_x": float(ball_display_point[0]),
                     "court_y": float(ball_display_point[1]),
+                    "ball_airborne": bool(airborne),
                 }
             )
 
@@ -476,9 +566,66 @@ def run_spacing_steps_1_to_4(
                 (combined.shape[1], combined.shape[0]),
             )
         writer.write(combined)
+
+        if overlay_metrics:
+            # Per-track EMA smoothing of the on-court positions used for the
+            # overlay geometry (the CSV metrics are read-only and unaffected).
+            geom_points = (
+                overlay_smoother.smooth(track_ids, display_points)
+                if overlay_smoother is not None
+                else display_points
+            )
+            point_by_id = build_point_by_id(geom_points, track_ids, topdown_padding)
+            pairs = overlay_pairs_by_frame.get(frame_count, [])
+            double_teamed = overlay_double_by_frame.get(frame_count, set())
+
+            # Persistence: on low-detection frames reuse the last full overlay.
+            if len(pairs) >= overlay_min_offense:
+                chosen = (point_by_id, pairs, double_teamed)
+                last_good_overlay = chosen
+            elif overlay_persistence and last_good_overlay is not None:
+                chosen = last_good_overlay
+                persisted_frames += 1
+            else:
+                chosen = (point_by_id, pairs, double_teamed)
+
+            if hide_ball_overlay:
+                overlay_ball_points = np.empty((0, 2), dtype=np.float32)
+                overlay_ball_trail: list[np.ndarray] = []
+            else:
+                overlay_ball_points = ball_display_points
+                overlay_ball_trail = list(ball_trail)
+
+            overlay_court = draw_top_down_with_overlays(
+                geom_points,
+                hoop_side=hoop_side,
+                track_ids=track_ids,
+                team_ids=team_ids,
+                ball_points=overlay_ball_points,
+                ball_trail=overlay_ball_trail,
+                padding=topdown_padding,
+                ball_radius=ball_radius,
+                offense_team=overlay_offense_team,
+                overlay_point_by_id=chosen[0],
+                nearest_pairs=chosen[1],
+                double_teamed=chosen[2],
+            )
+            overlay_combined = combine_views(camera_view, overlay_court)
+            if overlay_writer is None:
+                overlay_writer = cv2.VideoWriter(
+                    str(overlay_output_path),
+                    cv2.VideoWriter_fourcc(*"mp4v"),
+                    fps,
+                    (overlay_combined.shape[1], overlay_combined.shape[0]),
+                )
+            overlay_writer.write(overlay_combined)
+
         frame_count += 1
 
     if writer is not None:
         writer.release()
+    if overlay_writer is not None:
+        overlay_writer.release()
+        print(f"overlay: persisted {persisted_frames} low-detection frame(s) (< {overlay_min_offense} offensive players)")
     capture.release()
     write_rows(csv_path, rows)

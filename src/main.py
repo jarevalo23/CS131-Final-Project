@@ -100,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hoop-class-ids")
     parser.add_argument("--ball-class-ids")
     parser.add_argument("--detect-ball", action="store_true")
-    parser.add_argument("--ball-confidence", type=float)
+    parser.add_argument("--ball-confidence", type=float, default=0.25)
     parser.add_argument("--auto-orient-hoop", action="store_true")
     parser.add_argument("--compression-factor", type=float, default=1.0)
     parser.add_argument("--player-smoothing-alpha", type=float, default=1.0)
@@ -120,6 +120,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-player-box-height", type=float, default=35.0)
     parser.add_argument("--duplicate-iou-threshold", type=float, default=0.65)
     parser.add_argument("--max-players", type=int)
+    parser.add_argument("--overlay-metrics", action="store_true")
+    parser.add_argument("--no-overlay-smoothing", action="store_true")
+    parser.add_argument("--overlay-smoothing-alpha", type=float, default=0.4)
+    parser.add_argument("--no-overlay-persistence", action="store_true")
+    parser.add_argument("--overlay-min-offense", type=int, default=4)
+    parser.add_argument("--hide-ball-overlay", action="store_true")
     parser.add_argument("--csv-output", type=Path, default=Path("outputs/tracks.csv"))
     return parser.parse_args()
 
@@ -166,6 +172,12 @@ if __name__ == "__main__":
             min_player_box_height=args.min_player_box_height,
             duplicate_iou_threshold=args.duplicate_iou_threshold,
             max_players=args.max_players,
+            overlay_metrics=args.overlay_metrics,
+            overlay_smoothing=not args.no_overlay_smoothing,
+            overlay_smoothing_alpha=args.overlay_smoothing_alpha,
+            overlay_persistence=not args.no_overlay_persistence,
+            overlay_min_offense=args.overlay_min_offense,
+            hide_ball_overlay=args.hide_ball_overlay,
         )
     else:
         run(
