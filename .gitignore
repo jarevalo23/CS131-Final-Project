@@ -5,4 +5,14 @@
 *.pt
 *.dylib
 *.so
-runs/
+
+# Ignore training run artifacts, but keep the directory tree traversable so the
+# specific recovered weights below can be re-included (git can't un-ignore a file
+# whose parent directory is ignored). See memory: trained-yolo-weights-in-git-history.
+runs/**
+!runs/**/
+# Recovered trained weights (restored from git history) — keep these tracked so
+# they are not silently deleted/ignored again.
+!runs/detect/runs/basketball_players_yolov8n/weights/best.pt
+!runs/detect/runs/court/nba_court_yolov8n/weights/best.pt
+!runs/pose/runs/court_landmarks_pose/weights/best.pt
