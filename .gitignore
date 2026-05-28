@@ -16,3 +16,6 @@ runs/**
 !runs/detect/runs/basketball_players_yolov8n/weights/best.pt
 !runs/detect/runs/court/nba_court_yolov8n/weights/best.pt
 !runs/pose/runs/court_landmarks_pose/weights/best.pt
+__pycache__/
+*.pyc
+outputs/*.csv
