@@ -115,7 +115,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--team-lock-min-votes", type=int, default=8)
     parser.add_argument("--team-lock-majority-ratio", type=float, default=0.75)
 
-    parser.add_argument("--ball-confidence", type=float, default=0.12)
+    parser.add_argument("--ball-confidence", type=float, default=0.25)
     parser.add_argument("--ball-smoothing-alpha", type=float, default=0.08)
     parser.add_argument("--ball-max-jump", type=float, default=320.0)
     parser.add_argument("--ball-max-missing", type=int, default=24)
