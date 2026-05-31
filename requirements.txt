@@ -2,4 +2,5 @@ numpy
 opencv-python
 ultralytics
 scikit-learn
+scipy
 lap

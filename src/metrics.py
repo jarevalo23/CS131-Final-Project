@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +44,13 @@ class Player:
     team_id: int
     x_ft: float
     y_ft: float
+
+
+@dataclass(frozen=True)
+class BallPossession:
+    frame: int
+    possessor_track_id: int   # -1 means airborne / no possessor detected
+    airborne: bool
 
 
 def load_player_frames(csv_path: Path) -> dict[int, list[Player]]:
@@ -210,6 +217,146 @@ def compute_metrics(
     return frame_rows, nearest_rows
 
 
+def load_possession(csv_path: Path) -> list[BallPossession]:
+    """Load per-frame ball possession from a tracks CSV."""
+    rows: list[BallPossession] = []
+    with csv_path.open() as file:
+        for row in csv.DictReader(file):
+            if row.get("object_type") != "ball":
+                continue
+            airborne_raw = row.get("ball_airborne", "True")
+            airborne = str(airborne_raw).strip().lower() not in ("false", "0", "")
+            possessor_raw = row.get("possessing_ball", "-1")
+            try:
+                possessor = int(possessor_raw)
+            except (ValueError, TypeError):
+                possessor = -1
+            rows.append(BallPossession(
+                frame=int(row["frame"]),
+                possessor_track_id=possessor,
+                airborne=airborne,
+            ))
+    return rows
+
+
+def compute_speed_distance(
+    frames: dict[int, list[Player]],
+    fps: float,
+    window: int = 5,
+) -> list[dict]:
+    """Compute per-player speed (mph) and cumulative distance (ft) from court coords.
+
+    Uses a sliding window of `window` frames to smooth speed estimates and
+    reduce noise from jitter in the projected positions.  Distance is the
+    sum of frame-to-frame displacements in court feet.
+
+    Speed is only computed when a player is present in at least `window`
+    consecutive frames; otherwise the speed cell is left empty.
+    """
+    # Build per-track position history: {track_id: [(frame, x_ft, y_ft), ...]}
+    track_history: dict[int, list[tuple[int, float, float]]] = defaultdict(list)
+    for frame in sorted(frames):
+        for p in frames[frame]:
+            track_history[p.track_id].append((frame, p.x_ft, p.y_ft))
+
+    rows: list[dict] = []
+    for track_id, history in sorted(track_history.items()):
+        if len(history) < 2:
+            continue
+        # Team id for this track (use the most common non-(-1) value seen).
+        team_counts: Counter = Counter()
+        for frame_num in sorted(frames):
+            for p in frames[frame_num]:
+                if p.track_id == track_id and p.team_id >= 0:
+                    team_counts[p.team_id] += 1
+        team_id = team_counts.most_common(1)[0][0] if team_counts else -1
+
+        # Frame-to-frame displacement in feet.
+        total_dist_ft = 0.0
+        speeds_mph: list[float] = []
+        for i in range(1, len(history)):
+            f0, x0, y0 = history[i - 1]
+            f1, x1, y1 = history[i]
+            frame_gap = max(1, f1 - f0)
+            dist_ft = float(np.hypot(x1 - x0, y1 - y0))
+            total_dist_ft += dist_ft
+
+            # Only compute speed over contiguous window frames.
+            if i >= window:
+                fw, xw, yw = history[i - window]
+                window_frames = max(1, f1 - fw)
+                window_dist_ft = float(np.hypot(x1 - xw, y1 - yw))
+                time_s = window_frames / fps
+                # ft/s → mph: 1 ft/s = 0.681818 mph
+                speeds_mph.append(window_dist_ft / time_s * 0.681818)
+
+        avg_speed = float(np.mean(speeds_mph)) if speeds_mph else None
+        max_speed = float(np.max(speeds_mph)) if speeds_mph else None
+        rows.append({
+            "track_id": track_id,
+            "team_id": team_id,
+            "frames_tracked": len(history),
+            "total_distance_ft": f"{total_dist_ft:.1f}",
+            "avg_speed_mph": f"{avg_speed:.2f}" if avg_speed is not None else "",
+            "max_speed_mph": f"{max_speed:.2f}" if max_speed is not None else "",
+        })
+    return rows
+
+
+def compute_passes(
+    possession_rows: list[BallPossession],
+    frames: dict[int, list[Player]],
+) -> list[dict]:
+    """Detect passes and turnovers from possession change events.
+
+    A pass is a possession change between two players on the same team.
+    A turnover is a possession change between players on different teams.
+    Airborne frames (ball in flight) are skipped — we look for the frame
+    where a new player takes possession.
+
+    NOTE: accuracy depends on team classification quality.  If team_id
+    values are unreliable for a clip, the pass/turnover counts will be
+    noisy.  The raw possession_track_id is always recorded regardless.
+    """
+    # Build frame -> track_id -> team_id lookup.
+    team_by_track: dict[int, int] = {}
+    for player_list in frames.values():
+        for p in player_list:
+            if p.team_id >= 0:
+                team_by_track[p.track_id] = p.team_id
+
+    events: list[dict] = []
+    prev_possessor = -1
+    prev_team = -1
+
+    for bp in sorted(possession_rows, key=lambda r: r.frame):
+        if bp.airborne or bp.possessor_track_id < 0:
+            continue
+        curr_possessor = bp.possessor_track_id
+        curr_team = team_by_track.get(curr_possessor, -1)
+
+        if curr_possessor != prev_possessor and prev_possessor >= 0:
+            if curr_team < 0 or prev_team < 0:
+                event_type = "unknown"
+            elif curr_team == prev_team:
+                event_type = "pass"
+            else:
+                event_type = "turnover"
+            events.append({
+                "frame": bp.frame,
+                "from_track_id": prev_possessor,
+                "from_team_id": prev_team,
+                "to_track_id": curr_possessor,
+                "to_team_id": curr_team,
+                "event_type": event_type,
+            })
+
+        prev_possessor = curr_possessor
+        prev_team = curr_team
+
+    return events
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
@@ -265,6 +412,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--corner-width-ft", type=float, default=4.0, help="How far from a sideline still counts as a corner")
     parser.add_argument("--guard-radius-ft", type=float, default=1.0, help="Same-player guard: drop duplicate rows within this distance")
     parser.add_argument("--no-guard", action="store_true", help="Disable the same-player duplicate guard")
+    parser.add_argument("--fps", type=float, default=30.0, help="Video frame rate for speed/distance calculation")
+    parser.add_argument("--speed-output", type=Path, help="Per-player speed/distance CSV (default: <clip>_speed.csv)")
+    parser.add_argument("--passes-output", type=Path, help="Pass/turnover events CSV (default: <clip>_passes.csv)")
     return parser.parse_args()
 
 
@@ -274,6 +424,8 @@ def main() -> None:
     defense_team = 1 - offense_team
     output = args.output or default_output(args.tracks, "metrics")
     nearest_output = args.nearest_output or default_output(args.tracks, "nearest_defender")
+    speed_output = args.speed_output or default_output(args.tracks, "speed")
+    passes_output = args.passes_output or default_output(args.tracks, "passes")
 
     frames = load_player_frames(args.tracks)
     if args.no_guard:
@@ -281,6 +433,7 @@ def main() -> None:
     else:
         frames, frames_affected, rows_dropped = guard_frames(frames, args.guard_radius_ft)
         print(f"same-player guard: radius {args.guard_radius_ft} ft | {frames_affected} frames affected, {rows_dropped} duplicate rows dropped")
+
     frame_rows, nearest_rows = compute_metrics(
         frames,
         offense_team=offense_team,
@@ -295,6 +448,30 @@ def main() -> None:
     print_summary(frame_rows)
     print(f"  wrote {output}")
     print(f"  wrote {nearest_output} ({len(nearest_rows)} offensive-player rows)")
+
+    # Speed / distance — fully independent of team classification.
+    speed_rows = compute_speed_distance(frames, fps=args.fps)
+    write_csv(speed_output, speed_rows)
+    print(f"\nspeed / distance (fps={args.fps}):")
+    for r in speed_rows:
+        print(f"  track {r['track_id']} team {r['team_id']}: "
+              f"{r['total_distance_ft']} ft  avg {r['avg_speed_mph']} mph  "
+              f"max {r['max_speed_mph']} mph  ({r['frames_tracked']} frames)")
+    print(f"  wrote {speed_output}")
+
+    # Passes / turnovers — depends on team classification; flagged in output.
+    possession_rows = load_possession(args.tracks)
+    if possession_rows:
+        pass_rows = compute_passes(possession_rows, frames)
+        write_csv(passes_output, pass_rows)
+        passes = [e for e in pass_rows if e["event_type"] == "pass"]
+        turnovers = [e for e in pass_rows if e["event_type"] == "turnover"]
+        unknown = [e for e in pass_rows if e["event_type"] == "unknown"]
+        print(f"\npossession events (NOTE: pass/turnover labels depend on team classification accuracy):")
+        print(f"  passes: {len(passes)}  turnovers: {len(turnovers)}  unknown team: {len(unknown)}")
+        print(f"  wrote {passes_output}")
+    else:
+        print("\nno possession data in tracks CSV (re-run pipeline to generate possessing_ball column)")
 
 
 if __name__ == "__main__":

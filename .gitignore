@@ -18,4 +18,13 @@ runs/**
 !runs/pose/runs/court_landmarks_pose/weights/best.pt
 __pycache__/
 *.pyc
+*.DS_Store
+
+# Pipeline outputs — generated files, not source
 outputs/*.csv
+outputs/*.jpg
+outputs/*.png
+data/
+
+# Generated report figures (reproduced by running tests/report_analysis.py)
+tests/report_figures/

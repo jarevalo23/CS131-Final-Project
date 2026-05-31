@@ -92,7 +92,10 @@ class PlayerDetector:
                 tracker=self.tracker,
                 verbose=False,
             )[0]
-        except ModuleNotFoundError:
+        except ModuleNotFoundError as exc:
+            import warnings
+            warnings.warn(f"ByteTrack unavailable ({exc}); falling back to IoU tracker.")
+            self._use_ultralytics_tracker = False
             boxes = self.detect(frame)
             return self._fallback_tracker.update(boxes)
         boxes = []

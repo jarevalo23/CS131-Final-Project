@@ -11,6 +11,14 @@ DEFAULT_PLAYER_MODEL = "runs/detect/runs/basketball_players_yolov8n/weights/best
 DEFAULT_COURT_MODEL = "runs/detect/runs/court/nba_court_yolov8n/weights/best.pt"
 
 
+def _check_model_path(path: str, label: str) -> None:
+    if not Path(path).exists():
+        raise FileNotFoundError(
+            f"{label} model not found at '{path}'. "
+            "Pass the correct path with --player-model / --court-model."
+        )
+
+
 def default_output_path(video_path: Path) -> Path:
     return Path("outputs") / f"{video_path.stem}_auto_pipeline.mp4"
 
@@ -29,7 +37,9 @@ def run_video(args: argparse.Namespace) -> None:
     output_path = args.output or default_output_path(video_path)
     csv_path = args.csv_output or default_csv_path(video_path)
 
+    _check_model_path(args.player_model, "Player")
     if args.calibration is None:
+        _check_model_path(args.court_model, "Court")
         auto_calibrate_boxes(
             video_path=video_path,
             output_path=calibration_path,
@@ -75,6 +85,7 @@ def run_video(args: argparse.Namespace) -> None:
         min_player_box_height=args.min_player_box_height,
         duplicate_iou_threshold=args.duplicate_iou_threshold,
         max_players=args.max_players,
+        overlay_metrics=args.overlay_metrics,
     )
 
     print(f"Saved calibration to {calibration_path}")
@@ -123,6 +134,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ball-trail-length", type=int, default=28)
     parser.add_argument("--topdown-padding", type=int, default=260)
     parser.add_argument("--ball-radius", type=int, default=12)
+    parser.add_argument("--overlay-metrics", action="store_true",
+                        help="Render convex hull + nearest-defender overlays. "
+                             "Requires metrics.py to have been run first on the same csv-output path.")
     return parser.parse_args()
 
 

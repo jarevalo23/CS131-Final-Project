@@ -11,7 +11,7 @@ from src.court import DEFAULT_COURT_SIZE, hoop_pixel_x, hoop_pixel_y
 from src.detector import PlayerDetector, foot_points_from_boxes
 from src.dynamic_homography import DynamicHomographyTracker
 from src.homography import estimate_homography, load_calibration, load_hoop_side, project_points
-from src.smoothing import PointSmoother, TrackSmoother
+from src.smoothing import BallSmoother, TrackSmoother
 from src.team_classifier import JerseyTeamClassifier
 from src.visualize import (
     build_point_by_id,
@@ -126,6 +126,37 @@ def point_in_any_box(point: np.ndarray, boxes: np.ndarray, pad: float = 20.0) ->
     return bool(inside.any())
 
 
+def possessing_track_id(
+    ball_point: np.ndarray,
+    boxes: np.ndarray,
+    track_ids: np.ndarray,
+    pad: float = 20.0,
+) -> int:
+    """Return the track_id of the player whose box contains the ball, or -1.
+
+    When multiple boxes overlap the ball point (rare), the one whose center
+    is closest to the ball wins. This keeps possession independent of team_id
+    so it remains valid even when team classification is uncertain.
+    """
+    if len(boxes) == 0:
+        return -1
+    px, py = float(ball_point[0]), float(ball_point[1])
+    inside = (
+        (boxes[:, 0] - pad <= px)
+        & (px <= boxes[:, 2] + pad)
+        & (boxes[:, 1] - pad <= py)
+        & (py <= boxes[:, 3] + pad)
+    )
+    if not inside.any():
+        return -1
+    candidate_boxes = boxes[inside]
+    candidate_ids = track_ids[inside]
+    centers_x = (candidate_boxes[:, 0] + candidate_boxes[:, 2]) / 2
+    centers_y = (candidate_boxes[:, 1] + candidate_boxes[:, 3]) / 2
+    dists = np.hypot(centers_x - px, centers_y - py)
+    return int(candidate_ids[int(np.argmin(dists))])
+
+
 def filter_player_detections(
     boxes: np.ndarray,
     track_ids: np.ndarray,
@@ -192,6 +223,29 @@ def non_max_suppression(boxes: np.ndarray, confidences: np.ndarray, iou_threshol
     return np.array(keep, dtype=np.int32)
 
 
+def _ball_shape_mask(
+    boxes: np.ndarray,
+    frame_shape: tuple[int, ...],
+    min_size: float = 8.0,
+    max_size: float = 80.0,
+    max_aspect_ratio: float = 1.8,
+) -> np.ndarray:
+    """Return boolean mask keeping only detections that look like a basketball.
+
+    Basketballs are roughly circular and small relative to the frame.
+    Filters out common false positives: referee heads, jersey numbers,
+    scoreboard graphics, and other round-ish objects outside plausible size.
+    """
+    widths = boxes[:, 2] - boxes[:, 0]
+    heights = boxes[:, 3] - boxes[:, 1]
+    longer = np.maximum(widths, heights)
+    shorter = np.maximum(np.minimum(widths, heights), 1.0)
+    aspect = longer / shorter
+    size_ok = (longer >= min_size) & (longer <= max_size)
+    shape_ok = aspect <= max_aspect_ratio
+    return size_ok & shape_ok
+
+
 def detect_ball(
     detector: PlayerDetector,
     frame: np.ndarray,
@@ -218,7 +272,17 @@ def detect_ball(
             np.empty((0, 2), dtype=np.float32),
             np.empty((0,), dtype=np.float32),
         )
-    return detections.boxes, box_centers(detections.boxes), detections.confidences
+    # Filter to detections whose bounding box looks like a basketball.
+    mask = _ball_shape_mask(detections.boxes, frame.shape)
+    if not mask.any():
+        return (
+            np.empty((0, 4), dtype=np.float32),
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
+        )
+    boxes = detections.boxes[mask]
+    confs = detections.confidences[mask]
+    return boxes, box_centers(boxes), confs
 
 
 def choose_ball_candidate(
@@ -362,7 +426,11 @@ def run_spacing_steps_1_to_4(
     hoop_side = load_hoop_side(calibration_path)
     orientation_checked = False
     player_smoother = TrackSmoother(player_smoothing_alpha)
-    ball_smoother = PointSmoother(ball_smoothing_alpha, max_jump=ball_max_jump, max_missing=ball_max_missing)
+    ball_smoother = BallSmoother(
+        alpha=ball_smoothing_alpha,
+        max_speed=ball_max_jump if ball_max_jump is not None else 120.0,
+        max_missing=ball_max_missing,
+    )
     ball_trail: deque[np.ndarray] = deque(maxlen=max(1, ball_trail_length))
     topdown_padding = max(topdown_padding, ball_court_margin)
     team_classifier = (
@@ -503,6 +571,11 @@ def run_spacing_steps_1_to_4(
                 )
                 ball_trail.append(ball_display_points[0].copy())
 
+        # Compute possession once per frame so both player and ball rows agree.
+        ball_possessor = -1
+        if len(ball_points) > 0:
+            ball_possessor = possessing_track_id(ball_points[0], boxes, track_ids)
+
         for track_id, team_id, foot_point, projected_point in zip(track_ids, team_ids, foot_points, projected):
             rows.append(
                 {
@@ -515,12 +588,11 @@ def run_spacing_steps_1_to_4(
                     "court_x": float(projected_point[0]),
                     "court_y": float(projected_point[1]),
                     "ball_airborne": "",
+                    "possessing_ball": int(track_id) == ball_possessor,
                 }
             )
         for ball_point, ball_display_point in zip(ball_points, ball_display_points):
-            # "With a player" if the ball's image point falls inside any player
-            # box (padded); otherwise treat it as airborne (in flight / loose).
-            airborne = not point_in_any_box(ball_point, boxes, pad=20.0)
+            airborne = ball_possessor < 0
             rows.append(
                 {
                     "frame": frame_count,
@@ -532,6 +604,7 @@ def run_spacing_steps_1_to_4(
                     "court_x": float(ball_display_point[0]),
                     "court_y": float(ball_display_point[1]),
                     "ball_airborne": bool(airborne),
+                    "possessing_ball": ball_possessor,
                 }
             )
 

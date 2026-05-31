@@ -45,8 +45,10 @@ class DynamicHomographyTracker:
         tracked_points = next_points.reshape(-1, 2)[status_mask].astype(np.float32)
         tracked_court_points = self.court_points_ft[status_mask].astype(np.float32)
         try:
-            self.current_homography = estimate_homography(tracked_points, tracked_court_points)
+            new_homography = estimate_homography(tracked_points, tracked_court_points)
+            self.current_homography = new_homography
             self.frame_points[status_mask] = tracked_points
-        except ValueError:
-            pass
+        except ValueError as exc:
+            import warnings
+            warnings.warn(f"DynamicHomographyTracker: homography estimation failed ({exc}); reusing previous transform.")
         return self.current_homography
